@@ -34,7 +34,7 @@ MUSIC_PROMPTS = {
     ],
 }
 
-MODEL_URL = "https://api-inference.huggingface.co/models/facebook/musicgen-small"
+MODEL_URL = MODEL_URL = "https://router.huggingface.co/hf-inference/models/facebook/musicgen-medium"
 TOKENS_PER_SEGMENT = 1500
 
 
