@@ -280,3 +280,8 @@ class Composer:
         self._chords(midi)
         self._bass(midi)
         return midi
+    
+def generate_song(category, presets):
+    preset = presets[category]
+    composer = Composer(preset)
+    return composer.compose()
