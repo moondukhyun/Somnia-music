@@ -56,8 +56,8 @@ jobs:
         env:
           SOUNDFONT_PATH: /usr/share/sounds/sf2/FluidR3_GM.sf2
           OUTPUT_DIR: output
-            PEXELS_API_KEY: "${{ secrets.PEXELS_API_KEY }}"
-        run: |
+        run: |          
+          export PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}"
           python generate.py --category ${{ steps.cat.outputs.category }} --no-upload
 
       - name: Save artifact
