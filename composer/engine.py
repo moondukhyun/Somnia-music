@@ -7,14 +7,7 @@ NOTE_MIDI = {
     'Ab': 68, 'A': 69, 'A#': 70, 'Bb': 70, 'B': 71,
 }
 
-SCALE_INTERVALS = {
-    'pentatonic': [0, 2, 4, 7, 9],
-    'major':      [0, 2, 4, 5, 7, 9, 11],
-    'minor':      [0, 2, 3, 5, 7, 8, 10],
-    'dorian':     [0, 2, 3, 5, 7, 9, 10],
-}
-
-CHORD_INTERVALS = {
+CHORD_NOTES = {
     'maj':  [0, 4, 7],
     'min':  [0, 3, 7],
     'maj7': [0, 4, 7, 11],
@@ -22,265 +15,195 @@ CHORD_INTERVALS = {
     'dom7': [0, 4, 7, 10],
     'sus4': [0, 5, 7],
     'sus2': [0, 2, 7],
+    'add9': [0, 4, 7, 14],
 }
 
-# Section definitions: (start_bar, end_bar)
-SECTIONS = [
-    ('intro',       0,  4),   # bars 0-3:   sparse, melody only
-    ('a_section',   4, 16),   # bars 4-15:  theme established
-    ('b_section',  16, 24),   # bars 16-23: higher register, fuller
-    ('a_prime',    24, 36),   # bars 24-35: return with variation
-    ('development',36, 44),   # bars 36-43: most active, climax
-    ('outro',      44, 48),   # bars 44-47: fade out, sparse
-]
+def _jt(beat, s=0.025):
+    return beat + random.uniform(-s, s)
 
-
-def _jt(beat, spread=0.04):
-    return beat + random.uniform(-spread, spread)
-
-
-def _jv(vel, spread=8):
-    return max(20, min(127, vel + random.randint(-spread, spread)))
-
-
-def _get_section(bar):
-    for name, start, end in SECTIONS:
-        if start <= bar < end:
-            return name
-    return 'outro'
+def _jv(vel, s=5):
+    return max(15, min(120, vel + random.randint(-s, s)))
 
 
 class Composer:
-    BEATS = 4
+    BEATS      = 4
     TOTAL_BARS = 48
 
     def __init__(self, preset):
-        self.tempo = preset['tempo']
-        key = preset.get('key', 'C')
-        self.root = NOTE_MIDI.get(key, 60)
-        self.scale_name = preset.get('scale', 'pentatonic')
-        self.progression = preset.get('chord_progression', [
+        self.tempo   = preset['tempo']
+        self.prog    = preset.get('chord_progression', [
             ('C', 'maj7'), ('G', 'maj'), ('A', 'min7'), ('F', 'maj7')
         ])
-        self.base_vel = preset.get('piano_velocity', 70)
-        self.bass_vel  = preset.get('bass_velocity', 60)
-        self.pad_vel   = preset.get('pad_velocity', 50)
+        self.mel_vel = preset.get('piano_velocity', 68)
+        self.arp_vel = max(28, self.mel_vel - 24)
+        self.pad_vel = preset.get('pad_velocity', 36)
 
-    # ------------------------------------------------------------------ helpers
+    # ── helpers ───────────────────────────────────────────────────────────────
 
-    def _scale(self, root_offset=0, low=48, high=88):
-        intervals = SCALE_INTERVALS.get(self.scale_name, [0, 2, 4, 7, 9])
-        notes = []
-        for oct_n in range(-2, 4):
-            for iv in intervals:
-                n = self.root + root_offset + oct_n * 12 + iv
-                if low <= n <= high:
-                    notes.append(n)
-        return sorted(set(notes))
-
-    def _chord_notes(self, root_name, chord_type, octave=4):
+    def _chord(self, bar, octave=4):
+        root_name, chord_type = self.prog[(bar // 2) % len(self.prog)]
         base = NOTE_MIDI.get(root_name, 60) + (octave - 5) * 12
-        return [base + i for i in CHORD_INTERVALS.get(chord_type, [0, 4, 7])]
+        return [base + i for i in CHORD_NOTES.get(chord_type, [0, 4, 7])]
 
-    def _step(self, scale, prev, leap_prob=0.15):
-        if not scale:
-            return prev
-        if prev not in scale:
-            idx = min(range(len(scale)), key=lambda i: abs(scale[i] - prev))
-        else:
-            idx = scale.index(prev)
-        if random.random() < leap_prob:
-            step = random.choice([-3, -2, 2, 3])
-        else:
-            step = random.choice([-1, -1, 0, 1, 1])
-        return scale[max(0, min(len(scale) - 1, idx + step))]
+    def _section(self, bar):
+        p = bar / self.TOTAL_BARS
+        if p < 0.05:  return 'intro'   # bars 0-1   (~6s at 72bpm)
+        if p < 0.42:  return 'verse'   # bars 2-19
+        if p < 0.62:  return 'build'   # bars 20-29
+        if p < 0.81:  return 'chorus'  # bars 30-38
+        if p < 0.92:  return 'verse2'  # bars 39-43
+        return 'outro'                  # bars 44-47
 
-    # ------------------------------------------------------------------ melody
+    # ── arpeggios (flowing accompaniment) ─────────────────────────────────────
+
+    def _arpeggios(self, midi):
+        for bar in range(self.TOTAL_BARS):
+            sec  = self._section(bar)
+            beat = bar * self.BEATS
+            low  = self._chord(bar, octave=3)
+            mid  = self._chord(bar, octave=4)
+
+            r = low[0]
+            t = mid[1] if len(mid) > 1 else mid[0]
+            f = mid[2] if len(mid) > 2 else mid[-1]
+            h = mid[0] + 12
+
+            bv = {
+                'intro':  self.arp_vel - 6,
+                'verse':  self.arp_vel,
+                'build':  self.arp_vel + 6,
+                'chorus': self.arp_vel + 14,
+                'verse2': self.arp_vel - 4,
+                'outro':  self.arp_vel - 8,
+            }.get(sec, self.arp_vel)
+
+            if sec == 'outro':
+                progress = (bar - self.TOTAL_BARS * 0.92) / (self.TOTAL_BARS * 0.08 + 1)
+                bv = int(bv * (1 - progress * 0.7))
+                if bv < 8:
+                    continue
+
+            # 8-note arpeggio per bar: root-3rd-5th-oct-3rd-5th-oct-3rd
+            pattern = [r, t, f, h, t, f, h, t]
+            for i, note in enumerate(pattern):
+                v = _jv(bv + (6 if i == 0 else 0), 4)
+                midi.addNote(1, 1, note, _jt(beat + i * 0.5), 0.47, v)
+
+    # ── melody ────────────────────────────────────────────────────────────────
+
+    def _next_note(self, prev, pool):
+        """Smooth voice leading: prefer stepwise, chord-tone melody."""
+        if not pool:
+            return 60
+        if prev is None:
+            return pool[len(pool) // 2]
+        ordered = sorted(pool, key=lambda n: abs(n - prev))
+        if random.random() < 0.72:
+            candidates = ordered[:min(3, len(ordered))]
+            different  = [c for c in candidates if c != prev]
+            return random.choice(different) if different else ordered[0]
+        return random.choice(pool)
 
     def _melody(self, midi):
-        # Normal scale (mid range) and high scale for B section
-        scale_mid  = self._scale(low=52, high=80)
-        scale_high = self._scale(low=64, high=88)
-        scale_all  = self._scale(low=48, high=88)
-
-        prev = scale_mid[len(scale_mid) // 2]
+        prev = None
 
         for bar in range(self.TOTAL_BARS):
-            section = _get_section(bar)
-            base    = bar * self.BEATS
+            sec  = self._section(bar)
+            beat = bar * self.BEATS
+            mid  = self._chord(bar, octave=4)
+            high = self._chord(bar, octave=5)
 
-            if section == 'intro':
-                # One long note every 2 bars — total silence on odd bars
-                if bar % 2 == 0:
-                    prev = self._step(scale_mid, prev, leap_prob=0.05)
-                    midi.addNote(0, 0, prev, _jt(base), 1.8,
-                                 _jv(self.base_vel - 20, 5))
-
-            elif section == 'a_section':
-                # 3-4 notes per bar, mostly stepwise
-                n = random.randint(3, 4)
-                offsets = sorted(random.sample(range(8), n))
-                for off in offsets:
-                    prev = self._step(scale_mid, prev, leap_prob=0.12)
-                    dur  = random.choice([0.45, 0.9, 0.9])
-                    midi.addNote(0, 0, prev, _jt(base + off * 0.5), dur,
-                                 _jv(self.base_vel, 8))
-
-            elif section == 'b_section':
-                # 4-5 notes per bar, higher register
-                n = random.randint(4, 5)
-                offsets = sorted(random.sample(range(8), n))
-                for off in offsets:
-                    prev = self._step(scale_high, prev, leap_prob=0.2)
-                    dur  = random.choice([0.45, 0.45, 0.9])
-                    midi.addNote(0, 0, prev, _jt(base + off * 0.5), dur,
-                                 _jv(self.base_vel + 5, 7))
-
-            elif section == 'a_prime':
-                # Back to mid range but with occasional ornament (quick passing note)
-                n = random.randint(4, 5)
-                offsets = sorted(random.sample(range(8), n))
-                for i, off in enumerate(offsets):
-                    old_prev = prev
-                    prev = self._step(scale_mid, prev, leap_prob=0.15)
-                    # ~20% chance of grace note just before
-                    if i > 0 and random.random() < 0.2:
-                        grace = old_prev + random.choice([-1, 1])
-                        if grace in scale_mid:
-                            midi.addNote(0, 0, grace,
-                                         _jt(base + off * 0.5 - 0.18), 0.16,
-                                         _jv(self.base_vel - 15, 4))
-                    midi.addNote(0, 0, prev, _jt(base + off * 0.5),
-                                 random.choice([0.45, 0.9]),
-                                 _jv(self.base_vel + 3, 7))
-
-            elif section == 'development':
-                # 6-8 notes per bar, full range, highest energy
-                n = random.randint(6, 8)
-                offsets = sorted(random.sample(range(8), min(n, 8)))
-                for off in offsets:
-                    prev = self._step(scale_all, prev, leap_prob=0.28)
-                    midi.addNote(0, 0, prev, _jt(base + off * 0.5), 0.45,
-                                 _jv(self.base_vel + 12, 6))
-
-            else:  # outro
-                # One long note every 2 bars, velocity fades
-                if bar % 2 == 0:
-                    prev = self._step(scale_mid, prev, leap_prob=0.05)
-                    fade = (bar - 44) / 4.0          # 0.0 → 1.0
-                    vel  = int(self.base_vel * (1.0 - fade * 0.55))
-                    midi.addNote(0, 0, prev, _jt(base), 1.8, _jv(vel, 4))
-
-    # ------------------------------------------------------------------ chords
-
-    def _chords(self, midi):
-        for bar in range(self.TOTAL_BARS):
-            section = _get_section(bar)
-            base    = bar * self.BEATS
-
-            if section == 'intro':
-                continue                          # no chords in intro
-            if section == 'outro' and bar >= 46:
-                continue                          # fade chords out early
-
-            prog_idx = (bar // 2) % len(self.progression)
-            root_name, chord_type = self.progression[prog_idx]
-
-            if section == 'outro':
-                fade = (bar - 44) / 4.0
-                vel  = _jv(int(self.pad_vel * (1.0 - fade * 0.6)), 4)
-            elif section == 'development':
-                vel  = _jv(self.pad_vel + 15, 5)
-            elif section == 'b_section':
-                vel  = _jv(self.pad_vel + 8, 6)
-            else:
-                vel  = _jv(self.pad_vel, 7)
-
-            if section == 'development':
-                # Chord every bar (not every 2 bars) for more drive
-                oct_  = 4
-                notes = self._chord_notes(root_name, chord_type, oct_)
-                dur   = self.BEATS * 0.92
-                for i, note in enumerate(notes):
-                    midi.addNote(1, 1, note, _jt(base + i * 0.06), dur, vel)
-
-            elif section == 'b_section':
-                # Chord every bar, slightly higher voicing
-                notes = self._chord_notes(root_name, chord_type, octave=5)
-                dur   = self.BEATS * 0.92
-                for i, note in enumerate(notes):
-                    midi.addNote(1, 1, note, _jt(base + i * 0.07), dur, vel)
-
-            else:
-                # Default: chord every 2 bars, arpeggiated softly
-                if bar % 2 == 0:
-                    notes = self._chord_notes(root_name, chord_type, octave=4)
-                    dur   = self.BEATS * 2 * 0.92
-                    for i, note in enumerate(notes):
-                        midi.addNote(1, 1, note,
-                                     _jt(base + i * 0.06), dur, vel)
-
-    # ------------------------------------------------------------------- bass
-
-    def _bass(self, midi):
-        for bar in range(self.TOTAL_BARS):
-            section = _get_section(bar)
-            base    = bar * self.BEATS
-
-            if section in ('intro', 'outro'):
+            if sec == 'intro':
+                # Arpeggio-only intro — no melody, very brief
                 continue
 
-            prog_idx  = (bar // 2) % len(self.progression)
-            root_name, _ = self.progression[prog_idx]
-            root  = NOTE_MIDI.get(root_name, 60) - 24   # two octaves down
-            fifth = root + 7
+            if sec == 'outro':
+                progress = (bar - self.TOTAL_BARS * 0.92) / (self.TOTAL_BARS * 0.08 + 1)
+                v = int(self.mel_vel * (1 - progress * 0.65))
+                if bar % 2 == 0 and v > 12:
+                    n = self._next_note(prev, mid)
+                    midi.addNote(0, 0, n, _jt(beat + 0.5), 1.8, _jv(v, 4))
+                    prev = n
+                continue
 
-            if section == 'a_section':
-                # Root on beat 1 only, every 2 bars
-                if bar % 2 == 0:
-                    midi.addNote(2, 2, root, _jt(base, 0.02), 1.85,
-                                 _jv(self.bass_vel, 5))
+            # Rhythmic pattern & velocity by section
+            if sec == 'verse':
+                # Lyrical: long notes (half-note feel)
+                patterns = [
+                    [(0, 1.85), (2, 1.85)],
+                    [(0, 1.85), (1.5, 0.9), (2.5, 1.3)],
+                ]
+                positions = random.choice(patterns)
+                v = self.mel_vel - 4
 
-            elif section == 'b_section':
-                # Root + fifth each bar
-                midi.addNote(2, 2, root,  _jt(base,     0.02), 1.85,
-                             _jv(self.bass_vel,     5))
-                midi.addNote(2, 2, fifth, _jt(base + 2, 0.02), 1.85,
-                             _jv(self.bass_vel - 5, 5))
+            elif sec == 'build':
+                positions = [(0, 1.3), (1.5, 0.9), (2.5, 0.9), (3.5, 0.85)]
+                v = self.mel_vel + 3
 
-            elif section == 'a_prime':
-                # Root + fifth every bar, more consistent
-                midi.addNote(2, 2, root,  _jt(base,     0.02), 1.85,
-                             _jv(self.bass_vel,     5))
-                midi.addNote(2, 2, fifth, _jt(base + 2, 0.02), 1.85,
-                             _jv(self.bass_vel - 3, 5))
+            elif sec == 'chorus':
+                # Most active — use higher octave sometimes
+                patterns = [
+                    [(0, 0.9), (1, 0.9), (2, 0.9), (3, 0.9)],
+                    [(0, 1.3), (1.5, 0.9), (2.5, 0.9), (3.5, 0.85)],
+                ]
+                positions = random.choice(patterns)
+                v = self.mel_vel + 11
 
-            else:  # development — walking bass
-                passing = root + random.choice([2, 3, 4])
-                octave_up = root + 12
-                for beat_off, note, vel_bump in [
-                    (0, root,     8),
-                    (1, passing,  4),
-                    (2, fifth,    8),
-                    (3, octave_up if random.random() > 0.4 else fifth, 3),
-                ]:
-                    midi.addNote(2, 2, note, _jt(base + beat_off, 0.02), 0.85,
-                                 _jv(self.bass_vel + vel_bump, 5))
+            else:  # verse2
+                positions = [(0, 1.85), (2.5, 1.3)]
+                v = self.mel_vel - 10
 
-    # ----------------------------------------------------------------- compose
+            pool = (mid + high) if sec == 'chorus' else mid
+
+            for pos, dur in positions:
+                n = self._next_note(prev, pool)
+                midi.addNote(0, 0, n, _jt(beat + pos), dur, _jv(v, 6))
+                prev = n
+
+    # ── strings ───────────────────────────────────────────────────────────────
+
+    def _strings(self, midi):
+        for bar in range(self.TOTAL_BARS):
+            if bar % 2 != 0:
+                continue
+            sec = self._section(bar)
+            if sec == 'intro':
+                continue
+
+            v = {
+                'verse':  self.pad_vel,
+                'build':  self.pad_vel + 7,
+                'chorus': self.pad_vel + 16,
+                'verse2': self.pad_vel - 6,
+                'outro':  self.pad_vel - 10,
+            }.get(sec, self.pad_vel)
+
+            if sec == 'outro':
+                progress = (bar - self.TOTAL_BARS * 0.92) / (self.TOTAL_BARS * 0.08 + 1)
+                v = int(v * (1 - progress * 0.85))
+                if v < 8:
+                    continue
+
+            notes = self._chord(bar, octave=4)
+            beat  = bar * self.BEATS
+            for i, note in enumerate(notes):
+                midi.addNote(2, 2, note, _jt(beat + i * 0.07), self.BEATS * 2 * 0.95, _jv(v, 5))
+
+    # ── compose ───────────────────────────────────────────────────────────────
 
     def compose(self):
         midi = MIDIFile(3)
-        for track in range(3):
-            midi.addTempo(track, 0, self.tempo)
-        midi.addProgramChange(0, 0, 0, 4)    # Electric Piano
-        midi.addProgramChange(1, 1, 0, 48)   # String Ensemble
-        midi.addProgramChange(2, 2, 0, 32)   # Acoustic Bass
+        for t in range(3):
+            midi.addTempo(t, 0, self.tempo)
+        midi.addProgramChange(0, 0, 0, 0)   # Acoustic Grand Piano (melody)
+        midi.addProgramChange(1, 1, 0, 0)   # Acoustic Grand Piano (arpeggio)
+        midi.addProgramChange(2, 2, 0, 48)  # String Ensemble (pad)
+        self._arpeggios(midi)
         self._melody(midi)
-        self._chords(midi)
-        self._bass(midi)
+        self._strings(midi)
         return midi
-    
+
+
 def generate_song(category, presets):
     preset = presets[category]
     composer = Composer(preset)
