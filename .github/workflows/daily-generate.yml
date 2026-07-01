@@ -2,7 +2,7 @@ name: Daily Music Generation
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # 매일 오전 9시 KST (= 00:00 UTC)
+    - cron: '0 0 * * *'
   workflow_dispatch:
     inputs:
       category:
@@ -40,26 +40,26 @@ jobs:
       - name: Install Python packages
         run: pip install -r requirements.txt
 
-      - name: Determine today's category
+      - name: Determine category
         id: cat
         run: |
-          INPUT="${{ github.event.inputs.category }}"
-          if [ -n "$INPUT" ]; then
-            echo "category=$INPUT" >> $GITHUB_OUTPUT
-          else
-            CATS=(morning_coffee study_focus meditation rainy_day sleep morning_coffee meditation)
-            DOW=$(date +%u)
-            echo "category=${CATS[$((DOW-1))]}" >> $GITHUB_OUTPUT
+          CATS=(morning_coffee meditation sleep study_focus rainy_day)
+          DAY=$(date +%u)
+          IDX=$(( (DAY - 1) % ${#CATS[@]} ))
+          CAT="${{ github.event.inputs.category || '' }}"
+          if [ -z "$CAT" ]; then
+            CAT="${CATS[$IDX]}"
           fi
+          echo "category=$CAT" >> $GITHUB_OUTPUT
 
-      - name: Generate music and video
+      - name: Generate music (no upload)
         env:
           SOUNDFONT_PATH: /usr/share/sounds/sf2/FluidR3_GM.sf2
           OUTPUT_DIR: output
-          YOUTUBE_CREDENTIALS: ${{ secrets.YOUTUBE_CREDENTIALS }}
-        run: python generate.py --category ${{ steps.cat.outputs.category }}
+        run: |
+          python generate.py --category ${{ steps.cat.outputs.category }} --no-upload
 
-      - name: Save artifacts (7일 보관)
+      - name: Save artifact
         uses: actions/upload-artifact@v4
         with:
           name: music-${{ github.run_number }}
