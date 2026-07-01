@@ -2,11 +2,11 @@ name: Daily Music Generation
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 1 * * *'
   workflow_dispatch:
     inputs:
       category:
-        description: '생성할 카테고리'
+        description: 'Music category'
         required: false
         default: 'morning_coffee'
         type: choice
@@ -26,43 +26,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: pip
 
-      - name: Install system packages
+      - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y fluidsynth ffmpeg fluid-soundfont-gm
+          sudo apt-get install -y --no-install-recommends \
+            fluidsynth fluid-soundfont-gm ffmpeg
 
-      - name: Install Python packages
-        run: pip install -r requirements.txt
+      - name: Install Python dependencies
+        run: |
+          pip install --quiet midiutil requests
 
-      - name: Determine category
+      - name: Pick category
         id: cat
         run: |
-          CATS=(morning_coffee meditation sleep study_focus rainy_day)
-          DAY=$(date +%u)
-          IDX=$(( (DAY - 1) % ${#CATS[@]} ))
-          CAT="${{ github.event.inputs.category || '' }}"
-          if [ -z "$CAT" ]; then
-            CAT="${CATS[$IDX]}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "category=${{ github.event.inputs.category }}" >> $GITHUB_OUTPUT
+          else
+            CATS=(morning_coffee meditation sleep study_focus rainy_day)
+            DOW=$(date +%u)
+            IDX=$(( (DOW - 1) % 5 ))
+            echo "category=${CATS[$IDX]}" >> $GITHUB_OUTPUT
           fi
-          echo "category=$CAT" >> $GITHUB_OUTPUT
 
-      - name: Generate music (no upload)
+      - name: Generate music
         env:
           SOUNDFONT_PATH: /usr/share/sounds/sf2/FluidR3_GM.sf2
           OUTPUT_DIR: output
-        run: |          
+        run: |
+          export HF_API_KEY="${{ secrets.HF_API_KEY }}"
           export PEXELS_API_KEY="${{ secrets.PEXELS_API_KEY }}"
           python generate.py --category ${{ steps.cat.outputs.category }} --no-upload
 
-      - name: Save artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: music-${{ github.run_number }}
+          name: music-${{ steps.cat.outputs.category }}-${{ github.run_number }}
           path: output/
           retention-days: 7

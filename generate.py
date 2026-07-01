@@ -1,73 +1,109 @@
-#!/usr/bin/env python3
-"""
-Somnia Music Generator
-
-Usage:
-    python generate.py --category morning_coffee --no-upload
-    python generate.py --list
-"""
-
 import argparse
-import datetime
 import os
+import sys
+import datetime
+import subprocess
 
-from composer.engine import generate_song
 from composer.presets import PRESETS
-from composer.renderer import render_song
 from video.assembler import create_video
 
 OUTPUT_DIR = os.environ.get('OUTPUT_DIR', 'output')
+SOUNDFONT   = os.environ.get('SOUNDFONT_PATH', '/usr/share/sounds/sf2/FluidR3_GM.sf2')
+
+CATEGORIES = list(PRESETS.keys())
+TITLES = {
+    'morning_coffee': '모닝 커피 피아노 ☕ | 감성 피아노 음악',
+    'meditation':     '명상 피아노 🌿 | 마음이 편안해지는 음악',
+    'sleep':          '숙면 피아노 🌙 | 깊은 잠을 위한 음악',
+    'study_focus':    '집중 피아노 📚 | 공부할 때 듣는 음악',
+    'rainy_day':      '비 오는 날 피아노 🌧️ | 감성 멜로디',
+}
 
 
-def run(category, upload):
-    preset = PRESETS[category]
-    today = datetime.date.today().strftime('%Y%m%d')
-    base = f'{category}_{today}'
+def ensure_dir(path):
+    os.makedirs(path, exist_ok=True)
 
-    print(f'\n[Somnia Music] {preset["name"]} ({today})')
 
-    print('[1/4] 작곡 중...')
+def wav_to_mp3(wav_path, mp3_path):
+    result = subprocess.run(
+        ['ffmpeg', '-y', '-i', wav_path, '-codec:a', 'libmp3lame', '-qscale:a', '2', mp3_path],
+        capture_output=True, text=True
+    )
+    return os.path.exists(mp3_path)
+
+
+def midi_to_wav(midi_path, wav_path, soundfont):
+    result = subprocess.run(
+        ['fluidsynth', '-ni', soundfont, midi_path, '-F', wav_path, '-r', '44100'],
+        capture_output=True, text=True
+    )
+    return os.path.exists(wav_path)
+
+
+def generate_midi_fallback(category, base_path):
+    print("[MIDI] Using MIDI-based engine as fallback...")
+    from composer.engine import generate_song
     midi = generate_song(category, PRESETS)
-
-    print('[2/4] 오디오 렌더링 중...')
-    paths = render_song(midi, OUTPUT_DIR, base)
-    print(f'      {paths["mp3"]}')
-
-    print('[3/4] 영상 제작 중...')
-    video_path = os.path.join(OUTPUT_DIR, f'{base}.mp4')
-    create_video(paths['mp3'], preset.get('background', 'morning'), video_path)
-    print(f'      {video_path}')
-
-    if upload:
-        print('[4/4] 유튜브 업로드 중...')
-        try:
-            from uploader.youtube import upload_video
-            upload_video(video_path, preset, category)
-        except Exception as exc:
-            print(f'      업로드 실패: {exc}')
-    else:
-        print('[4/4] 업로드 건너뜀 (--no-upload)')
-
-    print('\n완료!')
-    return video_path
+    midi_path = base_path + '.mid'
+    wav_path  = base_path + '_midi.wav'
+    with open(midi_path, 'wb') as f:
+        midi.writeFile(f)
+    if not midi_to_wav(midi_path, wav_path, SOUNDFONT):
+        print("[ERROR] FluidSynth failed")
+        sys.exit(1)
+    return wav_path
 
 
 def main():
-    ap = argparse.ArgumentParser(description='Somnia Music Generator')
-    ap.add_argument('--category', '-c', default='morning_coffee',
-                    choices=list(PRESETS.keys()))
-    ap.add_argument('--no-upload', action='store_true')
-    ap.add_argument('--list', action='store_true', help='카테고리 목록 보기')
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--category', choices=CATEGORIES,
+                        default=CATEGORIES[datetime.date.today().weekday() % len(CATEGORIES)])
+    parser.add_argument('--no-upload', action='store_true')
+    args = parser.parse_args()
 
-    if args.list:
-        print('\n카테고리 목록:')
-        for k, v in PRESETS.items():
-            print(f'  {k:<20} {v["name"]} — {v["description"]}')
-        print()
-        return
+    category = args.category
+    preset   = PRESETS[category]
+    today    = datetime.date.today().strftime('%Y%m%d')
+    base     = os.path.join(OUTPUT_DIR, f'{today}_{category}')
+    ensure_dir(OUTPUT_DIR)
 
-    run(args.category, upload=not args.no_upload)
+    print(f"[INFO] Category : {category}")
+    print(f"[INFO] Title    : {TITLES.get(category, category)}")
+
+    wav_path = base + '.wav'
+    mp3_path = base + '.mp3'
+
+    ai_success = False
+    hf_key = os.environ.get('HF_API_KEY', '')
+
+    if hf_key:
+        print("[INFO] HF_API_KEY found — trying MusicGen AI...")
+        try:
+            from composer.ai_composer import generate_ai_music
+            ai_success = generate_ai_music(category, wav_path)
+        except Exception as e:
+            print(f"[WARN] AI generation error: {e}")
+            ai_success = False
+    else:
+        print("[INFO] HF_API_KEY not set — using MIDI engine")
+
+    if not ai_success:
+        wav_path = generate_midi_fallback(category, base)
+
+    if not wav_to_mp3(wav_path, mp3_path):
+        print("[ERROR] MP3 conversion failed")
+        sys.exit(1)
+    print(f"[INFO] MP3 ready: {mp3_path}")
+
+    video_path = base + '.mp4'
+    bg_key     = preset.get('background', 'morning')
+    create_video(mp3_path, bg_key, video_path)
+    print(f"[INFO] Video ready: {video_path}")
+
+    if not args.no_upload:
+        print("[INFO] Upload step (not implemented yet)")
+
+    print("[DONE] Generation complete.")
 
 
 if __name__ == '__main__':
