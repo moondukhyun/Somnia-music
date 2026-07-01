@@ -1,0 +1,67 @@
+name: Daily Music Generation
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # 매일 오전 9시 KST (= 00:00 UTC)
+  workflow_dispatch:
+    inputs:
+      category:
+        description: '생성할 카테고리'
+        required: false
+        default: 'morning_coffee'
+        type: choice
+        options:
+          - morning_coffee
+          - meditation
+          - sleep
+          - study_focus
+          - rainy_day
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y fluidsynth ffmpeg fluid-soundfont-gm
+
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+
+      - name: Determine today's category
+        id: cat
+        run: |
+          INPUT="${{ github.event.inputs.category }}"
+          if [ -n "$INPUT" ]; then
+            echo "category=$INPUT" >> $GITHUB_OUTPUT
+          else
+            CATS=(morning_coffee study_focus meditation rainy_day sleep morning_coffee meditation)
+            DOW=$(date +%u)
+            echo "category=${CATS[$((DOW-1))]}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate music and video
+        env:
+          SOUNDFONT_PATH: /usr/share/sounds/sf2/FluidR3_GM.sf2
+          OUTPUT_DIR: output
+          YOUTUBE_CREDENTIALS: ${{ secrets.YOUTUBE_CREDENTIALS }}
+        run: python generate.py --category ${{ steps.cat.outputs.category }}
+
+      - name: Save artifacts (7일 보관)
+        uses: actions/upload-artifact@v4
+        with:
+          name: music-${{ github.run_number }}
+          path: output/
+          retention-days: 7

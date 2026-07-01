@@ -1,0 +1,12 @@
+output/
+*.wav
+*.mp3
+*.mp4
+*.sf2
+youtube_credentials.json
+client_secrets.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
