@@ -73,103 +73,24 @@ def generate_prompts(today):
 - 영어로 작성 (Suno AI는 영어 프롬프트가 더 좋음)
 - 50-80 단어 분량
 - 구체적인 악기, 감정, 분위기, 레퍼런스 아티스트 포함
-- instrumental only (가사 없음)
+- 반드시 instrumental only (가사 없음, 보컬 없음) — 프롬프트 맨 끝에 항상 "instrumental only, no vocals, no lyrics, no singing" 을 포함할 것
 - 오늘의 날짜/계절/요일 감성을 반영
 
-6가지 카테고리:
+6가지 카테고리 (각각 반드시 다른 템포, 악기 구성, 분위기로 만들 것):
+
 1. 아침/카페 무드
+   - 템포: 보통~빠름 (100-120 BPM)
+   - 악기: 밝고 경쾌한 피아노 + 어쿠스틱 기타 + 가벼운 퍼커션
+   - 분위기: 밝고 희망적, 에너지 있음, 햇살 느낌
+
 2. 수면/명상
+   - 템포: 매우 느림 (40-60 BPM)
+   - 악기: 매우 부드러운 피아노 단음 + 깊은 패드 사운드, 퍼커션 없음
+   - 분위기: 극도로 조용하고 몽환적, 거의 소리가 없는 듯한 느낌
+
 3. 감성/힐링 (오늘 계절 반영)
+   - 템포: 느림 (60-80 BPM)
+   - 악기: 피아노 + 첼로/바이올린 현악기 + 약한 앰비언트
+   - 분위기: 뭉클하고 애절함, 눈물 나는 감동, 시네마틱
+
 4. 집중/공부 로파이
-5. 오늘의 특별 (날짜와 계절에서 영감받은 독창적인 무드)
-6. 직장 스트레스 해소 (직장에서 지치고 힘들 때 마음을 차분히 정리해주는 음악)
-
-다음 형식으로 출력해주세요:
-
-### 1. 아침/카페 ☕
-[프롬프트]
-
-### 2. 수면/명상 🌙
-[프롬프트]
-
-### 3. 감성/힐링 🌿
-[프롬프트]
-
-### 4. 집중/공부 📚
-[프롬프트]
-
-### 5. 오늘의 특별 ✨
-[프롬프트]
-
-### 6. 직장 스트레스 해소 🫧
-[프롬프트]"""
-
-    return call_claude(system_prompt)
-
-
-def save_prompts(content, today, output_dir='prompts'):
-    os.makedirs(output_dir, exist_ok=True)
-
-    filename = os.path.join(output_dir, f"{today.strftime('%Y-%m-%d')}_prompts.md")
-    date_str  = today.strftime('%Y년 %m월 %d일')
-    day_kor   = get_day_kor(today.weekday())
-    season    = get_season(today.month)
-
-    header = f"""# 🎵 오늘의 Suno 프롬프트
-**날짜**: {date_str} {day_kor}
-**계절**: {season}
-
-> 아래 프롬프트를 복사해서 Suno AI (https://suno.com) 에 붙여넣으세요.
-
----
-
-"""
-    full_content = header + content
-
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write(full_content)
-
-    latest = os.path.join(output_dir, 'latest.md')
-    with open(latest, 'w', encoding='utf-8') as f:
-        f.write(full_content)
-
-    print(f"[OK] Prompts saved to {filename}")
-    print(f"[OK] Latest prompts: {latest}")
-    return filename
-
-
-def main():
-    today = datetime.date.today()
-    print(f"[INFO] Generating prompts for {today}")
-
-    content = generate_prompts(today)
-    if not content:
-        print("[ERROR] Failed to generate prompts")
-        content = """### 1. 아침/카페 ☕
-emotional solo piano, Yiruma style, warm morning feeling, gentle arpeggios, soft and hopeful, peaceful cafe atmosphere, instrumental only, cinematic
-
-### 2. 수면/명상 🌙
-deep sleep piano, Einaudi Nuvole Bianche style, very slow and peaceful, minimal and soft, healing music, gentle breathing rhythm, instrumental only
-
-### 3. 감성/힐링 🌿
-emotional healing piano, touching and nostalgic, soft strings accompaniment, bittersweet melody, cinematic and heartfelt, instrumental only
-
-### 4. 집중/공부 📚
-lofi piano study music, calm and focused, gentle arpeggios, peaceful background, soft emotional melody, quiet concentration, instrumental only
-
-### 5. 오늘의 특별 ✨
-contemplative piano solo, introspective and deep, Ólafur Arnalds meets Yiruma, sparse notes with reverb, emotional journey, instrumental only
-
-### 6. 직장 스트레스 해소 🫧
-gentle stress-relief piano, soft and calming, slow breathing rhythm, peaceful and reassuring, work exhaustion healing, warm and comforting melody, Einaudi style, instrumental only"""
-
-    filename = save_prompts(content, today)
-
-    print("\n" + "="*50)
-    print("오늘의 Suno 프롬프트")
-    print("="*50)
-    print(content)
-
-
-if __name__ == '__main__':
-    main()
