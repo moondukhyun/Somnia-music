@@ -94,3 +94,107 @@ def generate_prompts(today):
    - 분위기: 뭉클하고 애절함, 눈물 나는 감동, 시네마틱
 
 4. 집중/공부 로파이
+   - 템포: 보통 (80-90 BPM)
+   - 악기: 로파이 피아노 + 바이닐 크래클 노이즈 + 재즈 드럼 브러시
+   - 분위기: 집중되고 차분함, 빈티지 느낌, 카세트테이프 질감
+
+5. 오늘의 특별 (날짜와 계절에서 영감받은 독창적인 무드)
+   - 템포: 자유롭게
+   - 악기: 오케스트라 또는 특이한 악기 조합 사용
+   - 분위기: 위 4개와 완전히 다른 독창적인 컨셉
+
+6. 직장 스트레스 해소
+   - 템포: 느림→보통 (70-90 BPM), 점점 마음이 풀리는 느낌
+   - 악기: 피아노 + 부드러운 신디사이저 패드 + 자연 소리(빗소리/새소리)
+   - 분위기: 처음엔 무겁다가 점점 가벼워지는 감정 해소, 따뜻한 위로
+
+다음 형식으로 출력해주세요:
+
+### 1. 아침/카페 ☕
+[프롬프트]
+
+### 2. 수면/명상 🌙
+[프롬프트]
+
+### 3. 감성/힐링 🌿
+[프롬프트]
+
+### 4. 집중/공부 📚
+[프롬프트]
+
+### 5. 오늘의 특별 ✨
+[프롬프트]
+
+### 6. 직장 스트레스 해소 🫧
+[프롬프트]"""
+
+    return call_claude(system_prompt)
+
+
+def save_prompts(content, today, output_dir='프롬프트'):
+    os.makedirs(output_dir, exist_ok=True)
+
+    filename = os.path.join(output_dir, f"{today.strftime('%Y-%m-%d')}_프롬프트.md")
+    date_str  = today.strftime('%Y년 %m월 %d일')
+    day_kor   = get_day_kor(today.weekday())
+    season    = get_season(today.month)
+
+    header = f"""# 🎵 오늘의 Suno 프롬프트
+**날짜**: {date_str} {day_kor}
+**계절**: {season}
+
+> 아래 프롬프트를 복사해서 Suno AI (https://suno.com) 에 붙여넣으세요.
+> 스타일(Style) 칸에 붙여넣고, 가사(Lyrics) 칸에는 [Instrumental] 입력하세요.
+
+---
+
+"""
+    full_content = header + content
+
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(full_content)
+
+    latest = os.path.join(output_dir, '최신.md')
+    with open(latest, 'w', encoding='utf-8') as f:
+        f.write(full_content)
+
+    print(f"[OK] Prompts saved to {filename}")
+    print(f"[OK] Latest: {latest}")
+    return filename
+
+
+def main():
+    today = datetime.date.today()
+    print(f"[INFO] Generating prompts for {today}")
+
+    content = generate_prompts(today)
+    if not content:
+        print("[ERROR] Failed to generate prompts")
+        content = """### 1. 아침/카페 ☕
+upbeat morning piano with acoustic guitar, bright and hopeful, gentle percussion, 110 BPM, warm sunlight feeling, Norah Jones style, energetic and cheerful, instrumental only, no vocals, no lyrics, no singing
+
+### 2. 수면/명상 🌙
+extremely slow solo piano, 50 BPM, single soft notes with long silence between, deep pad sound, no percussion, dreamlike and barely audible, Satie style, instrumental only, no vocals, no lyrics, no singing
+
+### 3. 감성/힐링 🌿
+emotional piano with cello and violin strings, 70 BPM, bittersweet and cinematic, tearful melody, Einaudi style, ambient undertones, deeply moving, instrumental only, no vocals, no lyrics, no singing
+
+### 4. 집중/공부 📚
+lofi piano with vinyl crackle and jazz brush drums, 85 BPM, vintage cassette texture, calm and focused, Cory Wong style, background study music, instrumental only, no vocals, no lyrics, no singing
+
+### 5. 오늘의 특별 ✨
+orchestral piano with unique instrument combinations, cinematic and original concept, inspired by today's season, Ólafur Arnalds style, instrumental only, no vocals, no lyrics, no singing
+
+### 6. 직장 스트레스 해소 🫧
+healing piano with soft synth pad and nature sounds like rain, 80 BPM, starts heavy then gradually lightens, warm comfort and emotional release, instrumental only, no vocals, no lyrics, no singing"""
+
+    filename = save_prompts(content, today)
+
+    print("\n" + "="*50)
+    print("오늘의 Suno 프롬프트")
+    print("="*50)
+    print(content)
+
+
+if __name__ == '__main__':
+    main()
