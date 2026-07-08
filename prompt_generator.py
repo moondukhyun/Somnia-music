@@ -1,6 +1,6 @@
 """
 Daily Suno prompt generator using Claude API.
-Generates 6 emotionally rich, varied prompts based on today's date and season.
+Generates 7 prompts (6 instrumental + 1 Korean lyrics song) based on today's date and season.
 """
 
 import os
@@ -32,7 +32,7 @@ def call_claude(prompt_text):
 
     payload = json.dumps({
         "model": MODEL,
-        "max_tokens": 1024,
+        "max_tokens": 2000,
         "messages": [{"role": "user", "content": prompt_text}]
     }).encode('utf-8')
 
@@ -67,16 +67,14 @@ def generate_prompts(today):
     system_prompt = f"""당신은 Suno AI 음악 생성을 위한 전문 프롬프트 작성가입니다.
 오늘은 {date_str} {day_kor}이고, 계절은 {season}입니다.
 
-"솜니아 뮤직" 유튜브 채널을 위한 감성적인 피아노/힐링 음악 프롬프트를 6개 만들어주세요.
+"솜니아 뮤직" 유튜브 채널을 위한 음악 프롬프트를 7개 만들어주세요.
 
-각 프롬프트는:
+1~6번 카테고리 (각각 반드시 다른 템포, 악기 구성, 분위기로 만들 것):
 - 영어로 작성 (Suno AI는 영어 프롬프트가 더 좋음)
 - 50-80 단어 분량
 - 구체적인 악기, 감정, 분위기, 레퍼런스 아티스트 포함
-- 반드시 instrumental only (가사 없음, 보컬 없음) — 프롬프트 맨 끝에 항상 "instrumental only, no vocals, no lyrics, no singing" 을 포함할 것
+- 반드시 instrumental only — 프롬프트 맨 끝에 항상 "instrumental only, no vocals, no lyrics, no singing" 을 포함할 것
 - 오늘의 날짜/계절/요일 감성을 반영
-
-6가지 카테고리 (각각 반드시 다른 템포, 악기 구성, 분위기로 만들 것):
 
 1. 아침/카페 무드
    - 템포: 보통~빠름 (100-120 BPM)
@@ -108,25 +106,41 @@ def generate_prompts(today):
    - 악기: 피아노 + 부드러운 신디사이저 패드 + 자연 소리(빗소리/새소리)
    - 분위기: 처음엔 무겁다가 점점 가벼워지는 감정 해소, 따뜻한 위로
 
+---
+
+7번째는 가사 있는 한국어 노래입니다. 형식이 다릅니다:
+
+7. 직장 생활 노래 (한국어 가사)
+   - 오늘의 {day_kor} / {season} 감성을 담아 직장인의 일상, 어려움, 희망을 표현
+   - 장르: 감성 K-pop 발라드 또는 어쿠스틱 인디 팝
+   - 한국어 가사로 작성 (1절 + 후렴 + 2절 + 후렴)
+   - 공감되는 직장 생활 이야기 (야근, 상사, 힘든 월요일, 퇴근 후 해방감, 동료와의 우정 등)
+   - 스타일 설명은 영어로, 가사는 한국어로
+
 다음 형식으로 출력해주세요:
 
 ### 1. 아침/카페 ☕
-[프롬프트]
+[스타일 프롬프트]
 
 ### 2. 수면/명상 🌙
-[프롬프트]
+[스타일 프롬프트]
 
 ### 3. 감성/힐링 🌿
-[프롬프트]
+[스타일 프롬프트]
 
 ### 4. 집중/공부 📚
-[프롬프트]
+[스타일 프롬프트]
 
 ### 5. 오늘의 특별 ✨
-[프롬프트]
+[스타일 프롬프트]
 
 ### 6. 직장 스트레스 해소 🫧
-[프롬프트]"""
+[스타일 프롬프트]
+
+### 7. 직장 생활 노래 🎤
+**스타일:** [영어로 장르/분위기 설명]
+**가사:**
+[한국어 가사]"""
 
     return call_claude(system_prompt)
 
@@ -144,7 +158,6 @@ def save_prompts(content, today, output_dir='프롬프트'):
 **계절**: {season}
 
 > 아래 프롬프트를 복사해서 Suno AI (https://suno.com) 에 붙여넣으세요.
-> 스타일(Style) 칸에 붙여넣고, 가사(Lyrics) 칸에는 [Instrumental] 입력하세요.
 
 ---
 
@@ -170,25 +183,9 @@ def main():
     content = generate_prompts(today)
     if not content:
         print("[ERROR] Failed to generate prompts")
-        content = """### 1. 아침/카페 ☕
-upbeat morning piano with acoustic guitar, bright and hopeful, gentle percussion, 110 BPM, warm sunlight feeling, Norah Jones style, energetic and cheerful, instrumental only, no vocals, no lyrics, no singing
+        return
 
-### 2. 수면/명상 🌙
-extremely slow solo piano, 50 BPM, single soft notes with long silence between, deep pad sound, no percussion, dreamlike and barely audible, Satie style, instrumental only, no vocals, no lyrics, no singing
-
-### 3. 감성/힐링 🌿
-emotional piano with cello and violin strings, 70 BPM, bittersweet and cinematic, tearful melody, Einaudi style, ambient undertones, deeply moving, instrumental only, no vocals, no lyrics, no singing
-
-### 4. 집중/공부 📚
-lofi piano with vinyl crackle and jazz brush drums, 85 BPM, vintage cassette texture, calm and focused, Cory Wong style, background study music, instrumental only, no vocals, no lyrics, no singing
-
-### 5. 오늘의 특별 ✨
-orchestral piano with unique instrument combinations, cinematic and original concept, inspired by today's season, Ólafur Arnalds style, instrumental only, no vocals, no lyrics, no singing
-
-### 6. 직장 스트레스 해소 🫧
-healing piano with soft synth pad and nature sounds like rain, 80 BPM, starts heavy then gradually lightens, warm comfort and emotional release, instrumental only, no vocals, no lyrics, no singing"""
-
-    filename = save_prompts(content, today)
+    save_prompts(content, today)
 
     print("\n" + "="*50)
     print("오늘의 Suno 프롬프트")
